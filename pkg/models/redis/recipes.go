@@ -3,7 +3,6 @@ package redis
 import (
 	"encoding/json"
 	"fmt"
-	"strconv"
 
 	"github.com/dvhthomas/meez/pkg/models"
 
@@ -27,37 +26,26 @@ func (rm *RecipeModel) Save(r *models.Recipe) (int, error) {
 	conn := rm.Pool.Get()
 	defer conn.Close()
 
-	// This begins a transaction consisting of multiple commands
-	err := conn.Send("MULTI")
-	if err != nil {
-		return 0, err
-	}
-
 	// Default value of an int in Go is zero, unless an ID
 	// was explicitly set, a zero value means this is a new
 	// Recipe and needs a new ID to use as the Redis key.
 	if r.ID == 0 {
-		nextID, err := redis.String(conn.Do("INCR", ids))
+		nextID, err := redis.Int(conn.Do("INCR", ids))
 		if err != nil {
-			return 0, err
+			return -1, err
 		}
-		r.ID, _ = strconv.Atoi(nextID)
+
+		r.ID = nextID
 	}
 
 	jsonRecipe, err := json.Marshal(r)
 	if err != nil {
-		return 0, err
+		return -1, err
 	}
 
 	_, err = conn.Do("SET", fmt.Sprintf("%s%d", objPrefix, r.ID), jsonRecipe)
 	if err != nil {
-		return 0, err
-	}
-
-	// EXEC will run both the INCR and SET commands as an atomic transaction
-	_, err = conn.Do("EXEC")
-	if err != nil {
-		return 0, err
+		return -1, err
 	}
 
 	return r.ID, nil
